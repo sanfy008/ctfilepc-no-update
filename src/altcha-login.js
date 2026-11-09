@@ -229,7 +229,8 @@
     var origApiCall = user.apiCall;
 
     user.apiCall = function (item, action, data, callback) {
-      if (item !== 'user_act' || action !== 'login' || !data || typeof data !== 'object') {
+      if (item !== 'user_act' || action !== 'login' || !data || typeof data !== 'object' ||
+          data.qr || typeof data.username === 'undefined' || typeof data.password === 'undefined') {
         return origApiCall.apply(this, arguments);
       }
       if (solving) return;
