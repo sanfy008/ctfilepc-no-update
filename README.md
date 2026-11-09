@@ -19,7 +19,20 @@
 - 版本号默认上报官方仍在维护的旧架构版本 `3.60.0`；如果服务端以“版本过低”拦截，会自动从官方版本接口读取最新版本号并重试（`login.js`、`main.js` 都会使用该值）；
 - 登录时优先嵌入官方验证页 `https://h5.ctfile.com/captcha/<type>.html?source=p8&action=login`：altcha 在后台隐藏完成，换成图片/turnstile 时则弹出官方界面由用户完成，验证算法升级由官方页面自行处理；
 - 官方验证页不可用时，回退到本地 PBKDF2 求解（向 `rest.ctfile.com/p8/public/captcha/altcha` 取挑战），生成 `altcha_token` 并随登录请求提交；令牌过期会自动换新重试；
-- 让 `user.server_version` 始终等于本地版本，并接管 `app_upgrade()`，从而屏蔽升级入口。
+- 让 `user.server_version` 始终等于本地版本，并接管 `app_upgrade()`，从而屏蔽升级入口；
+- 把下载/上传列表的存储位置从“按登录 session”改为“按账号”，并在启动时合并最近 7 天因 session 变化而孤立的任务、自动续传未完成任务。
+
+## 下载进度丢失修复
+
+原客户端把任务列表存成 `<登录session>downfileItems.json`。每次重新登录 session 都会变，旧任务因此加载不到，表现为“强制退出后进度丢失、需要重新下载”。
+
+补丁改为按账号固定为 `u_<username>_downfileItems.json`，并：
+
+- 启动时合并最近 7 天内其他 session 文件中的任务（按任务 id 去重，保留进度更大的副本）；
+- 自动续传保存状态为“下载中”（`pause=false` 且未完成）的任务，续传偏移以磁盘上已有文件大小为准；
+- 每 5 秒保存一次列表，尽量保留最新进度。
+
+> 副作用：最近 7 天内被中断的任务会重新出现在下载列表并自动继续；确实不再需要的任务手动删除即可。
 
 ## 安装
 

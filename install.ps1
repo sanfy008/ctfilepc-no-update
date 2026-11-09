@@ -65,6 +65,29 @@ function Ensure-ScriptTag($path, $anchor, $tag) {
     return $true
 }
 
+function Ensure-ScriptTagBefore($path, $anchor, $tag) {
+    $text = Read-Text $path
+    if ($text.Contains($tag)) { return $false }
+    if (!$text.Contains($anchor)) {
+        throw "在 $path 中找不到插入点：$anchor"
+    }
+    $bare = $anchor.TrimStart()
+    $replacement = '  ' + $tag + "`r`n  " + $bare
+    Write-Text $path ($text.Replace($anchor, $replacement))
+    return $true
+}
+
+function Patch-DownloadPath($path) {
+    $text = Read-Text $path
+    if ($text.Contains('(user.username||"default")')) { return $false }
+    $anchor = 'user[_0x419d58(0xbbf)]()'
+    if (!$text.Contains($anchor)) {
+        throw "未能在 $path 中找到下载列表路径语句（$anchor），该客户端版本可能不受支持。"
+    }
+    Write-Text $path ($text.Replace($anchor, '("u_"+(user.username||"default")+"_")'))
+    return $true
+}
+
 function Patch-Version($path) {
     $text = Read-Text $path
     $dynamic = 'return (typeof window !== "undefined" && window.__ctfileClientVersion) || "3.60.0";'
@@ -97,6 +120,7 @@ if ($Restore) {
     }
     Remove-Item -LiteralPath (Join-Path $ComDir "altcha-login.js") -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $ComDir "no-upgrade.js") -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $ComDir "download-resume.js") -Force -ErrorAction SilentlyContinue
     Write-Host "已恢复原始文件，补丁脚本已删除。" -ForegroundColor Green
     Write-Host "如需完全清理，可手动删除 $BackupDir。"
     exit 0
@@ -106,15 +130,20 @@ Backup-Originals
 
 Copy-Item -LiteralPath (Join-Path $SrcDir "altcha-login.js") -Destination (Join-Path $ComDir "altcha-login.js") -Force
 Copy-Item -LiteralPath (Join-Path $SrcDir "no-upgrade.js") -Destination (Join-Path $ComDir "no-upgrade.js") -Force
+Copy-Item -LiteralPath (Join-Path $SrcDir "download-resume.js") -Destination (Join-Path $ComDir "download-resume.js") -Force
 
 $v1 = Patch-Version (Join-Path $ComDir "login.js")
 $v2 = Patch-Version (Join-Path $ComDir "main.js")
+$p1 = Patch-DownloadPath (Join-Path $ComDir "main.js")
+$t0 = Ensure-ScriptTagBefore (Join-Path $HtmlDir "index.html") '  <script src="com/main.js"></script>' '<script src="com/download-resume.js"></script>'
 $t1 = Ensure-ScriptTag (Join-Path $HtmlDir "login.html") '  <script src="com/login.js"></script>' '<script src="com/altcha-login.js"></script>'
 $t2 = Ensure-ScriptTag (Join-Path $HtmlDir "index.html") '  <script src="com/main.js"></script>' '<script src="com/no-upgrade.js"></script>'
 
 Write-Host "补丁安装完成：" -ForegroundColor Green
 Write-Host ("  版本号伪装    login.js={0}  main.js={1}" -f $v1, $v2)
+Write-Host ("  下载列表路径  main.js={0}" -f $p1)
 Write-Host ("  登录脚本注入  login.html={0}" -f $t1)
+Write-Host ("  下载续传注入  index.html={0}" -f $t0)
 Write-Host ("  升级屏蔽注入  index.html={0}" -f $t2)
 Write-Host ("  原始文件备份  {0}" -f $BackupDir)
 Write-Host "请重新启动客户端。"
