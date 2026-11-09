@@ -33,6 +33,16 @@
   var userItems = readJson(path.join(dataPath, 'userItems.json')) || {};
   var key = 'u_' + (userItems.username || 'default') + '_';
   var target = path.join(dataPath, key + PREFIX + 'Items.json');
+  var markerPath = path.join(dataPath, key + PREFIX + 'Items.migrated.json');
+
+  function isCompleteOnDisk(item) {
+    try {
+      if (!item.filesize) return false;
+      return fs.statSync((item.folder_path || '') + item.file_name).size >= item.filesize;
+    } catch (e) {
+      return false;
+    }
+  }
 
   function migrate() {
     var current = readJson(target);
@@ -42,8 +52,10 @@
     var names = [];
     try { names = fs.readdirSync(dataPath); } catch (e) { return []; }
 
+    var marker = readJson(markerPath) || {};
     var merged = {};
     var order = [];
+    var seen = [];
 
     names.forEach(function (name) {
       if (name.indexOf(PREFIX + 'Items.json') < 0) return;
@@ -54,17 +66,23 @@
       var st;
       try { st = fs.statSync(p); } catch (e) { return; }
       if (st.mtimeMs < cutoff) return;
+      if (marker[name] === st.mtimeMs) return; // 已经合并过，避免完成后被重新拉起
 
       var arr = readJson(p);
       if (!Array.isArray(arr)) return;
+      seen.push([name, st.mtimeMs]);
 
       arr.forEach(function (item) {
-        if (!item || !item.id) return;
+        if (!item || !item.id || item.complete) return;
+        if (isCompleteOnDisk(item)) return; // 磁盘上已完整，不再恢复
         var prev = merged[item.id];
         if (!prev || (item.transSize || 0) >= (prev.transSize || 0)) merged[item.id] = item;
         if (order.indexOf(item.id) < 0) order.push(item.id);
       });
     });
+
+    seen.forEach(function (pair) { marker[pair[0]] = pair[1]; });
+    if (seen.length) writeJson(markerPath, marker);
 
     if (!order.length) return [];
 
