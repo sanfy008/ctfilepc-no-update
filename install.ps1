@@ -67,10 +67,15 @@ function Ensure-ScriptTag($path, $anchor, $tag) {
 
 function Patch-Version($path) {
     $text = Read-Text $path
-    if ($text.Contains('return "3.60.0";')) { return $false }
-    $new = [regex]::Replace($text, 'return[^;\r\n]*0\.3500000000000001\s*;', 'return "3.60.0";')
+    $dynamic = 'return (typeof window !== "undefined" && window.__ctfileClientVersion) || "3.60.0";'
+    if ($text.Contains('__ctfileClientVersion')) { return $false }
+    if ($text.Contains('return "3.60.0";')) {
+        Write-Text $path ($text.Replace('return "3.60.0";', $dynamic))
+        return $true
+    }
+    $new = [regex]::Replace($text, 'return[^;\r\n]*0\.3500000000000001\s*;', { param($m) $dynamic })
     if ($new -eq $text) {
-        throw "未能在 $path 中找到客户端版本返回语句（0.3500000000000001），该客户端版本可能不受支持。"
+        throw "未能在 $path 中找到客户端版本返回语句，该客户端版本可能不受支持。"
     }
     Write-Text $path $new
     return $true

@@ -14,10 +14,11 @@
 - `version < 3.60` 直接返回 `403 当前版本只能扫码登录`；
 - `version >= 3.60` 时要求附带 `altcha_token`（PBKDF2/SHA-256 工作量证明）。
 
-补丁做了三件事：
+补丁做了这些事：
 
-- 把客户端上报的版本号改为官方仍在维护的旧架构版本 `3.60.0`（`login.js`、`main.js`）；
-- 登录时向 `https://rest.ctfile.com/p8/public/captcha/altcha?act=login` 获取挑战，多线程搜索符合条件的 PBKDF2 计数器，生成 `altcha_token` 并随登录请求提交；令牌过期会自动换新重试；
+- 版本号默认上报官方仍在维护的旧架构版本 `3.60.0`；如果服务端以“版本过低”拦截，会自动从官方版本接口读取最新版本号并重试（`login.js`、`main.js` 都会使用该值）；
+- 登录时优先嵌入官方验证页 `https://h5.ctfile.com/captcha/<type>.html?source=p8&action=login`：altcha 在后台隐藏完成，换成图片/turnstile 时则弹出官方界面由用户完成，验证算法升级由官方页面自行处理；
+- 官方验证页不可用时，回退到本地 PBKDF2 求解（向 `rest.ctfile.com/p8/public/captcha/altcha` 取挑战），生成 `altcha_token` 并随登录请求提交；令牌过期会自动换新重试；
 - 让 `user.server_version` 始终等于本地版本，并接管 `app_upgrade()`，从而屏蔽升级入口。
 
 ## 安装
@@ -59,6 +60,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Restore
 ## 注意事项
 
 - 软件重装或手动运行官方升级包会覆盖补丁，需要重新执行 `install.ps1`；
+- 登录时需要联网加载官方验证页/版本接口，首次验证通常 1–3 秒；若官方改为图片或 Turnstile 验证，会弹出验证框，需要手动完成；
 - 若登录后仍提示“请完成安全验证”，再点一次登录即可（补丁只自动重试一次）；
 - 版本伪装只用于通过旧版登录接口，不改变账号权限，也不会绕过服务端的其它安全校验；
 - 服务端策略随时可能调整，本项目不保证长期有效。
